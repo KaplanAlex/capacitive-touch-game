@@ -19,6 +19,7 @@
 void raw_button_state();
 void check_pulse();
 void start_spi(uint8_t *transmit, unsigned int count);
+void leds_from_press();
 
 // SPI
 uint8_t *dataptr;                         // Pointer which traverses the tx information
@@ -27,11 +28,13 @@ unsigned int tx_count = 0;                // Track transmission count in interru
 
 // Capacitive Sensing
 unsigned int pulse_time = 0;
+
+/* Button state variables */
+/* 0 - Up   1 - Right   2 - Down    3 - Left    4 - Middle */
 uint8_t pulse_rx = 0x00;                  // Flags representing propagated pulse rx.
 uint8_t button_state = 0x00;              // Flags representing current button press state.
 
-/* The time it took for the pulse to be returned from each capacitive button (in .1ms). */
-/* 0 - Up   1 - Right   2 - Down    3 - Left    4 - Middle */
+/* Pulse receive time from each capacitive button (in .1ms). */
 uint8_t rx_times[5] = {0x00, 0x00, 0x00, 0x00, 0x00};
 
 
@@ -46,7 +49,11 @@ uint8_t colors[] = {0x00, 0x00, 0x00, 0x00, \
 int main(void)
 {
     setup();                              // Initialize clocks, timers, and SPI protocol.
-    start_spi(colors, data_len);
+    //start_spi(colors, data_len);
+    while (1) {
+        leds_from_press();
+        __bis_SR_register(LPM0_bits);     //Enters low power mode for 1ms for fun.
+    }
 }
 
 
@@ -65,6 +72,19 @@ start_spi(uint8_t *transmit, unsigned int count)
     tx_count = count - 1;          // Set the global count for the spi interrupt.
     UCA0TXBUF = *dataptr;          // Write the first byte to the buffer and send.
     dataptr++;
+}
+
+/* Turns on LEDs on the board corrsponding to pressed buttons to illustrate
+ * capacitive sense detected pressed.
+ */
+void
+leds_from_press()
+{
+    uint8_t local_pressed = button_state;
+    
+    // Shift down 2 bits to match the output pins.
+    local_pressed <<= 2;
+    P3OUT &= local_pressed;
 }
 
 
