@@ -1,6 +1,7 @@
 #include "cap_setup.h"
 #include <msp430.h>
 
+#define INTERRUPT_INTERVAL 100            // Interrupt every .1ms for timing.
 
 /*
  * Setup Clocks, Timers, and SPI protocol.
