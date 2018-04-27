@@ -8,6 +8,7 @@
  * files. This includes:
  * 
  * button_state: the pressed state of the each capacitive button.
+ *
  ********************************************************************/
 #include <msp430.h>
 #include <stdint.h>
@@ -15,7 +16,7 @@
 #include "cap_sense.h"
 #include "cap_setup.h"
 
-#define INTERRUPT_INTERVAL 100            // Interrupt every .1ms for timing.
+//#define INTERRUPT_INTERVAL 500            // Interrupt every .1ms for timing.
 
 // Prototypes.
 void start_spi(uint8_t *transmit, unsigned int count);
@@ -77,8 +78,10 @@ leds_from_press()
     uint8_t local_pressed = button_state;
     
     // Shift down 2 bits to match the output pins.
-    local_pressed <<= 2;
-    P3OUT &= local_pressed;
+    P3OUT &= 0x00;
+    local_pressed <<= 1;
+    local_pressed <<= 1;
+    P3OUT |= local_pressed;
 }
 
 
@@ -99,7 +102,7 @@ void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) USCIA0TX_ISR (void)
         dataptr++;              // Move the pointer to the next byte.
         tx_count--;
     } else {
-        /* There are no remaining bytes to transmit.
+        /*o transmit.
          * Clear the interrupt flag to exit. */
         IFG2 &= ~UCA0TXIFG;
     }
@@ -110,13 +113,11 @@ void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) USCIA0TX_ISR (void)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void Timer_A (void)
 #elif defined(__GNUC__)
-void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A1 (void)
+void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A0 (void)
 #else
 #error Compiler not supported!
 #endif
 {
-    
-    TA0CCR0 += INTERRUPT_INTERVAL;           // Re-trigger the interrupt in another interavl.
     
     /* Track pulse rx time and update button pressed state upon new pulse transmission. */
     check_pulse(&button_state);

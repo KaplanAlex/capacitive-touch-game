@@ -3,7 +3,9 @@
 
 #include "cap_sense.h"
 
-#define PRESS_THRESHOLD    20             // Minimum of 20 .1ms delay to register press.
+#define PRESS_THRESHOLD    3             // Minimum of 20ms delay to register press.
+#define ON_TIME            2
+#define CYCLE_TIME         100
 
 unsigned int pulse_time = 0;
 
@@ -14,7 +16,7 @@ uint8_t pulse_rx = 0x00;    // Flags representing propagated pulse rx.
 uint8_t rx_times[5] = {0x00, 0x00, 0x00, 0x00, 0x00};
 
 /* Read from P2IN to detect pin input voltage and store the state of all
- * capacitive puttons in the 5 LSBs of a single byte to recognize received
+ * capacitive buttons in the 5 LSBs of a single byte to recognize received
  * pulses.
  *
  * Update the global variable "pulse_rx" to reflect received pulses.
@@ -24,7 +26,7 @@ void
 raw_button_state()
 {
     uint8_t raw_state = 0;
-    uint8_t switch_vals = ~P2IN;     // Flip P2IN so that switches are high when pressed
+    uint8_t switch_vals = P2IN;     // Flip P2IN so that switches are high when pressed
     
     /* Up - P3.2  Right - P3.3  Down - P3.4  Left - P3.5  Middle P3.6 */
     raw_state |= switch_vals & BIT2;
@@ -51,7 +53,7 @@ raw_button_state()
  * Otherwise, detect new pulse reception and update rx_times for every unreceived pulse.
  */
 void
-check_pulse(uint8_t *button_state)
+check_pulse(uint8_t *btn_state)
 {
     // A new pulse has been sent.
     if (!pulse_time) {
@@ -74,7 +76,7 @@ check_pulse(uint8_t *button_state)
         new_state <<= 1;
         
         new_state |= (rx_times[0] > PRESS_THRESHOLD);
-        *button_state &= new_state;
+        *btn_state = new_state;
         
         // Reset pulse rx flags and times.
         pulse_rx = 0x00;
@@ -83,35 +85,50 @@ check_pulse(uint8_t *button_state)
             rx_times[rx_idx] = 0x01;
         }
         
+        P2OUT |= BIT1; //Send pulse
         pulse_time++;
         return;
     }
+    pulse_time++;
     
+    // Set output low to turn off the pulse after ON_TIME ms.
+    if(pulse_time > ON_TIME)
+    {
+        P2OUT &= ~BIT1;
+    }
+
+    // After CYCLE_TIME, reset the pulse.
+    if(pulse_time >= CYCLE_TIME)
+    {
+        pulse_time = 0;
+    }
+
     // Update pulse_rx to reflect all received pulses.
     raw_button_state();
     
     /* Increment rx_times for unreceived pulses until next pulse is sent.
      * 0 - Up   1 - Right   2 - Down    3 - Left    4 - Middle
      */
-    if (pulse_rx & BIT0) rx_times[0]++;
-    if (pulse_rx & BIT1) rx_times[1]++;
-    if (pulse_rx & BIT2) rx_times[2]++;
-    if (pulse_rx & BIT3) rx_times[3]++;
-    if (pulse_rx & BIT4) rx_times[4]++;
+    if (!(pulse_rx & BIT0)) rx_times[0]++;
+    if (!(pulse_rx & BIT1)) rx_times[1]++;
+    if (!(pulse_rx & BIT2)) rx_times[2]++;
+    if (!(pulse_rx & BIT3)) rx_times[3]++;
+    if (!(pulse_rx & BIT4)) rx_times[4]++;
     
 }
 
-/* Timer A1 interrupt service routine - called on pulse send. */
-#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-#pragma vector=TIMER0_A1_VECTOR
-__interrupt void Timer_A1 (void)
-#elif defined(__GNUC__)
-void __attribute__ ((interrupt(TIMER0_A1_VECTOR))) Timer_A (void)
-#else
-#error Compiler not supported!
-#endif
-{
-    // Reset time from pulse send to receive to zero and pulse receive flag.
-    pulse_time = 0;
-}
+///* Timer A1 interrupt service routine - called on pulse send. */
+//#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+//#pragma vector=TIMER0_A1_VECTOR
+//__interrupt void Timer_A1 (void)
+//#elif defined(__GNUC__)
+//void __attribute__ ((interrupt(TIMER0_A1_VECTOR))) Timer_A (void)
+//#else
+//#error Compiler not supported!
+//#endif
+//{
+//    // Reset time from pulse send to receive to zero and pulse receive flag.
+//    pulse_time = 0;
+////    called = 1;
+//}
 
