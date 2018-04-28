@@ -17,37 +17,82 @@
 #include "cap_setup.h"
 
 //#define INTERRUPT_INTERVAL 500            // Interrupt every .1ms for timing.
+#define NUM_LEDS 120
+
+// LED colors
+#define OFF   0
+#define RED   1
+#define GREEN 2
+#define BLUE  3
+#define GREEN 4
+#define GREEN 5
+#define GREEN 6
+#define GREEN 7
+
+
+// Game states
+#define START 0
+#define PLAY 1
+#define WIN 2
+#define LOSE 3
+
+
 
 // Prototypes.
 void start_spi(uint8_t *transmit, unsigned int count);
 void leds_from_press();
+void refresh_board();
+void led_to_spi(uint8_t led);
+void game_fsm();
 
 // SPI
-uint8_t *dataptr;                         // Pointer which traverses the tx information
+unsigned int spi_led_idx = 0;
 unsigned int data_len = 24;               // The number of bytes to be transmitted
-unsigned int tx_count = 0;                // Track transmission count in interrupts
-
+unsigned int frame_idx = 0;                // Track transmission count in interrupts
+uint8_t *dataptr;                         // Pointer which traverses the tx information
+uint8_t spi_start_frame[] = {0x00, 0x00, 0x00, 0x00};
+uint8_t general_frame[] = {0xE1, 0x00, 0x00, 0x00};
+uint8_t spi_end_frame[] = {0xFF, 0xFF, 0xFF, 0xFF};
 // Capacitive Sensing
-
 /* Pressed Buttons: 0 - Up   1 - Right   2 - Down    3 - Left    4 - Middle */
 uint8_t button_state = 0x00;
 
 
-// Random initial colors - TODO initialize...
-uint8_t colors[] = {0x00, 0x00, 0x00, 0x00, \
-    0xE1, 0x00, 0x00, 0xFF, \
-    0xE1, 0x00, 0xFF, 0x00, \
-    0xE1, 0x09, 0x9F, 0xFF, \
-    0xE1, 0xFF, 0x00, 0x00, \
-    0xFF, 0xFF, 0xFF, 0xFF};
+// Represent every LED with one byte.
+uint8_t led_board[NUM_LEDS];
 
-int main(void)
+// Game state
+current_state = START;
+
+
+int
+main(void)
 {
+    // Initialize the led_board.
+    int i;
+    for (i = 0; i < NUM_LEDS; i++) {
+        led_board[i] = 0x00;
+    }
+    
+    
     setup();                              // Initialize clocks, timers, and SPI protocol.
-    //start_spi(colors, data_len);
+    
     while (1) {
         leds_from_press();
         __bis_SR_register(LPM0_bits);     //Enters low power mode for 1ms for fun.
+        refresh_board();
+    }
+}
+
+
+/* Iterates over the game FSM.
+ *
+ */
+void
+game_fsm()
+{
+    switch(current_state) {
+            
     }
 }
 
@@ -64,7 +109,7 @@ start_spi(uint8_t *transmit, unsigned int count)
 {
     //Transmit the first byte and move the pointer to the next byte
     dataptr = transmit;            // Set the data pointer for the spi interrupt.
-    tx_count = count - 1;          // Set the global count for the spi interrupt.
+    frame_idx = count - 1;          // Set the global count for the spi interrupt.
     UCA0TXBUF = *dataptr;          // Write the first byte to the buffer and send.
     dataptr++;
 }
@@ -84,6 +129,46 @@ leds_from_press()
     P3OUT |= local_pressed;
 }
 
+/* Convert led color from a single byte representation
+ * to the 4 byte format expected by the APA102 LEDs.
+ *
+ * Led is a byte in led_board.
+ */
+void
+led_to_spi(uint8_t led)
+{
+    // Clear the general frame, leaving brightness.
+    int i;
+    for (i = 3; i > 0; i--) {
+        general_frame[i] = 0x00;
+    }
+    
+    switch (led) {
+        // Off
+        case RED:
+            general_frame[RED] = 0xFF;
+            break;
+        // Green
+        case GREEN:
+            general_frame[GREEN] = 0xFF;
+            break;
+        // Blue
+        case BLUE:
+            general_frame[BLUE] = 0xFF;
+            break;
+        default:
+            break;
+    }
+    
+}
+
+
+void
+refresh_board()
+{
+    spi_led_idx = 0;
+    start_spi(spi_start_frame, 4);
+}
 
 
 /* Interrupt driven SPI transfer */
@@ -96,16 +181,33 @@ void __attribute__ ((interrupt(USCIAB0TX_VECTOR))) USCIA0TX_ISR (void)
 #error Compiler not supported!
 #endif
 {
-    //There are more bytes to transmit
-    if (tx_count > 0) {
+    
+    
+    //There are more bytes in the current frame to transmit.
+    if (frame_idx > 0) {
         UCA0TXBUF = *dataptr;   // Transmit the next byte.
         dataptr++;              // Move the pointer to the next byte.
-        tx_count--;
+        frame_idx--;
     } else {
-        /*o transmit.
-         * Clear the interrupt flag to exit. */
-        IFG2 &= ~UCA0TXIFG;
+        // Send the next LED.
+        if (spi_led_idx < NUM_LEDS) {
+            // Update the general frame to transmit the next led.
+            led_to_spi(led_board[spi_led_idx]);
+            start_spi(general_frame, 4);
+            
+            spi_led_idx++;
+        } else if (spi_led_idx == NUM_LEDS) {
+            // Start endframe tx.
+            start_spi(spi_end_frame, 4);
+            spi_led_idx++;
+        } else {
+            /* There is no more data to transmit. Clear the interrupt flag
+             * to exit.
+             */
+            IFG2 &= ~UCA0TXIFG;
+        }
     }
+   
 }
 
 /* Timer A0 interrupt service routine for timing. */
