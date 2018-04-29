@@ -56,11 +56,19 @@ void clearStrip();
 void fillStrip(u_char r, u_char g, u_char b);
 void gradualFill(u_int n, u_char r, u_char g, u_char b);
 
+// Animations
+void animate_start();
+
+// RNG
+unsigned int generate_seed(void);
+unsigned int rand32(int seed);
 
 void leds_from_press();
 void refresh_board();
 
 void game_fsm();
+
+
 
 // SPI
 //unsigned int spi_led_idx = 0;
@@ -73,14 +81,19 @@ uint8_t *dataptr;                         // Pointer which traverses the tx info
 /* Pressed Buttons: 0 - Up   1 - Right   2 - Down    3 - Left    4 - Middle */
 uint8_t button_state = 0x00;
 
+// Random number generation
+unsigned int rng_seed;
+unsigned int random_num = 0;
+
 
 // Represent every LED with one byte.
 static LED led_board[NUM_LEDS];
 
 // Game parameters
-int current_state = START;
-int leftmost_block = 0;
-int start_width = 4;
+static int current_state = START;
+static int leftmost_block = 0;
+static int start_width = 4;
+static int current_width = 4;
 static int dir = 1;
 
 int
@@ -94,33 +107,39 @@ main(void)
         led_board[i].blue = 0x00;
     }
     
+    /* Generate a unique random seed based on VLO - DCO differences */
+    rng_seed = generate_seed();
+    
     // Initialize clocks, timers, and SPI protocol.
     setup();
+    
+    /* Seed the random number generator with rng_seed */
+    random_num = rand32(1);
     
     // Turn off the LED grid.
     clearStrip();
     refresh_board();
     
-    // Start shifting to the right.
+    // Initialize the game FSM
     dir = 1;
-    int slide= 1;
+    current_state = START;
     while (1) {
-
-        slide_block(0, start_width);
-        refresh_board();
-        wait(100, &button_state, 0);
+        game_fsm();
+        //        slide_block(0, start_width);
+        //        refresh_board();
+        //        wait(100, &button_state, 0);
         
         // Slide block
-//        if (slide) {
-//            
-//        }
-//        
-//        //leds_from_press();
-//        if (wait(100, &button_state, 1))
-//            slide = 0;
-//        else
-//            slide = 1;
-//        
+        //        if (slide) {
+        //
+        //        }
+        //
+        //        //leds_from_press();
+        //        if (wait(100, &button_state, 1))
+        //            slide = 0;
+        //        else
+        //            slide = 1;
+        //
         //__delay_cycles(1000000);       // lazy delay
         
         
@@ -140,11 +159,49 @@ main(void)
 void
 game_fsm()
 {
-    //    switch(current_state) {
-    //        case START:
-    //            //num_blocks = 4;
-    //
-    //    }
+    static int pressed = 0;
+    static int slide = 1;
+    switch(current_state) {
+        case START:
+            
+            // Play start animation until a press is detected.
+            if (!pressed) animate_start();
+            
+            // Detect button press.
+            if (button_state) {
+                pressed = 1;
+            }
+            
+            // Detect release and transition.
+            if (pressed) {
+                if (!button_state) {
+                    clearStrip();
+                    slide = 1;
+                    pressed = 0;
+                    current_state = PLAY;
+                }
+            }
+            
+            break;
+        case PLAY:
+            if (slide) {
+                slide_block(0, start_width);
+                refresh_board();
+                if (wait(100, &button_state, 0)) return;
+            }
+            
+            if (button_state) {
+                slide = 0;
+            }
+            
+            
+            
+            break;
+        case WIN:
+            break;
+        case LOSE:
+            break;
+    }
 }
 
 
@@ -315,7 +372,7 @@ refresh_board()
         }
     }
     
-    // Delay for at least 50us to signify end of transmission.
+    // Delay for at least 50us to send RES code and signify end of transmission.
     __delay_cycles(800);
     
     // Re-enable interrupts
@@ -323,6 +380,119 @@ refresh_board()
 }
 
 
+/* Start animation for STACKER
+ * Randomly lights up LEDs on the board, then flashes 3 times
+ */
+void
+animate_start()
+{
+    clearStrip();
+    if (wait(500, &button_state, 1)) return;
+    int led;
+    for (led = 0; led < (NUM_LEDS); led++) {
+        setLEDColor(rand32(0) + rand32(0), 0x08, 0x00, 0x00);
+        refresh_board();
+        if (wait(100, &button_state, 1)) return;
+    }
+    fillStrip(0x08, 0x00, 0x00);
+    if (wait(500, &button_state, 1)) return;
+    clearStrip();
+    if (wait(500, &button_state, 1)) return;
+    fillStrip(0x08, 0x00, 0x00);
+    if (wait(500, &button_state, 1)) return;
+    clearStrip();
+    if (wait(500, &button_state, 1)) return;
+    fillStrip(0x08, 0x00, 0x00);
+    if (wait(500, &button_state, 1)) return;
+    
+    
+}
+
+
+
+
+
+/*
+ * Generates a random number between 0 and 31 based on a LFSR.
+ *
+ * If seed is 1, the random number generator is initialized with
+ * a random starting seed.
+ */
+unsigned int rand32(int seed)
+{
+    static unsigned int prev_lfsr = 0x0005;        // Track the previous state and initialize to an optimal seed
+    unsigned int lfsr;                         //Initialize lfsr to the previous state
+    unsigned int new_bit;
+    
+    
+    // Detect the first call to rand4() and initialize with a random seed.
+    if (seed) {
+        prev_lfsr = rng_seed;
+    }
+    
+    // Restore the previous state
+    lfsr = prev_lfsr;
+    
+    /* taps: 16 14 13 11; feedback polynomial: x^16 + x^14 + x^13 + x^11 + 1 */
+    new_bit  = ((lfsr >> 0) ^ (lfsr >> 2) ^ (lfsr >> 3) ^ (lfsr >> 5) ) & 1;
+    lfsr =  (lfsr >> 1) | (new_bit << 15);
+    
+    prev_lfsr = lfsr;
+    
+    // Mask out the value
+    return (lfsr & 0b11111);
+}
+
+
+/*
+ * Use the difference between the DCO and VLO to generate a
+ * random 16 bit number. This function manipulates clocks and
+ * timers, so run it first. (http://www.ti.com/lit/an/slaa338/slaa338.pdf)
+ * (https://github.com/0/msp430-rng).
+ */
+unsigned int
+generate_seed(void) {
+    int i, j;
+    unsigned int result = 0;
+    
+    /* Save default settings */
+    unsigned int BCSCTL3_default = BCSCTL3;
+    unsigned int TACCTL0_default = TACCTL0;
+    unsigned int TACTL_default = TACTL;
+    
+    /* Stop TimerA */
+    TACTL = 0x0;
+    
+    /* Set up timer */
+    BCSCTL3 = (~LFXT1S_3 & BCSCTL3) | LFXT1S_2; // Source ACLK from VLO
+    TACCTL0 = CAP | CM_1 | CCIS_1;              // Capture mode, positive edge
+    TACTL = TASSEL_2 | MC_2;                    // SMCLK, continuous up
+    
+    /* Generate bits */
+    for (i = 0; i < 16; i++) {
+        unsigned int ones = 0;
+        
+        for (j = 0; j < 5; j++) {
+            while (!(CCIFG & TACCTL0));       // Wait for interrupt
+            
+            TACCTL0 &= ~CCIFG;                // Clear interrupt
+            if (1 & TACCR0)                   // If LSb set, count it
+                ones++;
+        }
+        
+        result >>= 1;                         // Save previous bits
+        
+        if (ones >= 3)                        // Best out of 5
+            result |= 0x8000;                 // Set MSb
+    }
+    
+    // Rest timers and clocks to their default settings.
+    BCSCTL3 = BCSCTL3_default;
+    TACCTL0 = TACCTL0_default;
+    TACTL = TACTL_default;
+    
+    return result;
+}
 
 
 
@@ -336,14 +506,16 @@ void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A0 (void)
 #error Compiler not supported!
 #endif
 {
-    __bic_SR_register(LPM0_bits);    // Exit low power mode 0 locally.
+    /* Exit low power mode 0 locally to send/ process PWM signal without
+     * interferring with TimerA1 LMP0 based timing
+     */
+    __bic_SR_register(LPM0_bits);
+    
     /* Track pulse rx time and update button pressed state upon
-     * new pulse transmission.
+     * new pulse transmission. Update Leds to represented pressed state.
      */
     check_pulse(&button_state);
     leds_from_press();
-    
-    //__bic_SR_register_on_exit(LPM0_bits);    // Exit low power mode 0.
     
 }
 
