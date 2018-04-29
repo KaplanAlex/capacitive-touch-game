@@ -3,8 +3,8 @@
 
 #include "cap_sense.h"
 
-#define PRESS_THRESHOLD    3             // Minimum of 20ms delay to register press.
-#define ON_TIME            2
+#define PRESS_THRESHOLD    4             // Minimum of 2ms delay to register press.
+#define ON_TIME            6
 #define CYCLE_TIME         100
 
 unsigned int pulse_time = 0;
@@ -116,19 +116,4 @@ check_pulse(uint8_t *btn_state)
     if (!(pulse_rx & BIT4)) rx_times[4]++;
     
 }
-
-///* Timer A1 interrupt service routine - called on pulse send. */
-//#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
-//#pragma vector=TIMER0_A1_VECTOR
-//__interrupt void Timer_A1 (void)
-//#elif defined(__GNUC__)
-//void __attribute__ ((interrupt(TIMER0_A1_VECTOR))) Timer_A (void)
-//#else
-//#error Compiler not supported!
-//#endif
-//{
-//    // Reset time from pulse send to receive to zero and pulse receive flag.
-//    pulse_time = 0;
-////    called = 1;
-//}
 
