@@ -68,7 +68,7 @@ void leds_from_press();
 void refresh_board();
 
 void game_fsm();
-
+void animate_block_loss(unsigned int row, unsigned int block);
 
 
 // SPI
@@ -91,12 +91,17 @@ unsigned int random_num = 0;
 static LED led_board[NUM_LEDS];
 
 // Game parameters
-static int current_state = START;
-static int leftmost_block = 0;
-static int start_width = 4;
-static int current_width = 4;
-static int current_row = 0;
-static int dir = 1;
+static unsigned int current_state = START;
+static unsigned int start_width = 4;
+static unsigned int current_row = 0;
+static unsigned int dir = 1;
+
+static unsigned int leftmost_block = 0;
+static unsigned int current_width = 4;
+
+static unsigned int prev_leftmost = 4;
+static unsigned int prev_width = 4;
+
 
 int
 main(void)
@@ -163,6 +168,8 @@ game_fsm()
 {
     static int pressed = 0;
     static int slide = 1;
+    unsigned int block;
+    unsigned int next_width;
     switch(current_state) {
         case START:
             
@@ -194,11 +201,32 @@ game_fsm()
                 if (wait(100, &button_state, 0)) return;
             }
             
+            // Detect touch
             if (button_state) {
-                waitForRelease();
                 current_row++;
+                if (current_row == 1) return;
+                
+                next_width = current_width;
+                
+                // Check the alignment of each block with the previous row.
+                for (block = leftmost_block; block < leftmost_block + current_width; block++) {
+                    // Off to the left or off to the right
+                    if (block < prev_leftmost || block > prev_leftmost + prev_width - 1) {
+                        // Decrement the width of the next row
+                        next_width--;
+                        animate_block_loss(current_row, block);
+                    }
+                }
+                
+                
+                
+                
+                // Save the current leftmost and width to check next row's alignment.
+                prev_leftmost = leftmost_block;
+                prev_width = next_width;
+                
+                //waitForRelease();
             }
-            
             
             
             break;
@@ -421,9 +449,21 @@ animate_start()
     
     
 }
-
-
-
+/* Fade animation for misaligned blocks
+ *
+ */
+void
+animate_block_loss(unsigned row, unsigned block)
+{
+    int fade_idx;
+    int color = 0x08;
+    for (fade_idx = 0; fade_idx < 4; fade_idx--) {
+        color >>= 1;
+        setLEDColor(row*COLUMNS + block, color, 0x00, 0x00);
+        wait(500, &button_state, 0);
+    }
+    
+}
 
 
 /*
