@@ -74,12 +74,11 @@ main(void)
         led_board[i] = 0x00;
     }
     
-    
-    setup();                              // Initialize clocks, timers, and SPI protocol.
+    // Initialize clocks, timers, and SPI protocol.
+    setup();
     
     while (1) {
         leds_from_press();
-        __bis_SR_register(LPM0_bits);     //Enters low power mode for 1ms for fun.
         refresh_board();
     }
 }
@@ -143,6 +142,7 @@ led_to_spi(uint8_t led)
         general_frame[i] = 0x00;
     }
     
+    // Update the general frame to contain the color encoded in the byte.
     switch (led) {
         // Off
         case RED:
