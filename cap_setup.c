@@ -30,9 +30,7 @@ setup()
     /* Set all capacitive buttons to inputs and enable pull up resistors. */
     /* Up - P2.2  Right - P2.3  Down - P2.4 Left - P2.5  Middle - P2.6 */
     P2DIR &= ~(BIT2 + BIT3 + BIT4 + BIT5 + BIT6);   // Set input direction
-//    P2REN |= BIT2 + BIT3 + BIT4 + BIT5 + BIT6;      // Enable pull up/down resistors.
-//    P2OUT |= BIT2 + BIT3 + BIT4 + BIT5 + BIT6;      // Set pull UP resistor.
-    
+
     /* Set all LEDs to output and intialize to off. */
     /* Up - P3.2  Right - P3.3  Down - P3.4  Left - P3.5  Middle P3.6 */
     P3DIR |= BIT2 + BIT3 + BIT4 + BIT5 + BIT6;
@@ -42,20 +40,6 @@ setup()
     P2DIR |= BIT1;                            // P2.1 to output (corresponds to TA1CCR1).
     P2SEL &= ~BIT6;
     P2SEL2 &= ~BIT6;
-
-//    P2SEL |= BIT1;                            // Set the function of P2.1 to PWM
-//    P2SEL2 &= ~BIT1;
-    
-//    TA1CTL |= TASSEL_2 + MC_1 + ID_0;         // Source from SMCLK, Up mode (to TA1CCR0).
-//    TA1CCTL0 |= CCIE;                         // CCR0 interrupt enable for PWM sent flag.
-    
-    /* Set PWM to toggle on and off with 10 millisecond period. Period needs to be long enough to prevent
-     * overlapping pulses when capacitance is large.
-     */
-//    TA1CCR0 = 10000;
-//    TA1CCR1 = 2000;                         // Off at CCR1. Needs to be long on enough to be detected.
-//    TA1CCTL1 = OUTMOD_7;                    // Set the PWM mode to toggle on at CCR0 and reset at CCR1.
-    
 }
 
 /*
@@ -71,8 +55,8 @@ setup_spi()
     
     UCA0MCTL = 0;                                 // No modulation
     UCA0CTL1 |= UCSSEL_2;                         // SMCLK
-    UCA0BR0 = 0x00;                               // Dont divide the clock further
-    UCA0BR1 = 0x00;
+    UCA0BR0 = 3;                               // Dont divide the clock further
+    UCA0BR1 = 0;
     
     P1DIR = BIT2 + BIT4;                          // Set P1.2 and P1.4 to output
     

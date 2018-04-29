@@ -97,19 +97,19 @@ main(void)
     //    }
     
     // set strip color red
-    fillStrip(0xFF, 0x00, 0x00);
+    fillStrip(0x08, 0x00, 0x00);
     
     // show the strip
     refresh_board();
     
     // gradually fill for ever and ever
     while (1) {
-        gradualFill(NUM_LEDS, 0x00, 0xFF, 0x00);  // green
-        gradualFill(NUM_LEDS, 0x00, 0x00, 0xFF);  // blue
-        gradualFill(NUM_LEDS, 0xFF, 0x00, 0xFF);  // magenta
-        gradualFill(NUM_LEDS, 0xFF, 0xFF, 0x00);  // yellow
-        gradualFill(NUM_LEDS, 0x00, 0xFF, 0xFF);  // cyan
-        gradualFill(NUM_LEDS, 0xFF, 0x00, 0x00);  // red
+        gradualFill(NUM_LEDS, 0x00, 0x08, 0x00);  // green
+        gradualFill(NUM_LEDS, 0x00, 0x00, 0x08);  // blue
+        gradualFill(NUM_LEDS, 0x08, 0x00, 0x08);  // magenta
+        gradualFill(NUM_LEDS, 0x08, 0x08, 0x00);  // yellow
+        gradualFill(NUM_LEDS, 0x00, 0x08, 0x08);  // cyan
+        gradualFill(NUM_LEDS, 0x08, 0x00, 0x00);  // red
     }
 }
 
@@ -206,7 +206,7 @@ refresh_board()
         for (j = 0; j < 3; j++) {
             u_char mask = 0x80;    // b1000000
             
-            // check each of the 8 bits
+            // Send each of the 8 bits as long and short pulses.
             while (mask != 0) {
                 while (!(IFG2 & UCA0TXIFG))
                     ;    // wait to transmit
