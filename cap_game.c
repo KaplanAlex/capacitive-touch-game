@@ -62,6 +62,7 @@ void animate_start();
 // RNG
 unsigned int generate_seed(void);
 unsigned int rand32(int seed);
+void waitForRelease(void);
 
 void leds_from_press();
 void refresh_board();
@@ -94,6 +95,7 @@ static int current_state = START;
 static int leftmost_block = 0;
 static int start_width = 4;
 static int current_width = 4;
+static int current_row = 0;
 static int dir = 1;
 
 int
@@ -178,6 +180,8 @@ game_fsm()
                     clearStrip();
                     slide = 1;
                     pressed = 0;
+                    current_row = 0;
+                    current_width = start_width;
                     current_state = PLAY;
                 }
             }
@@ -185,13 +189,14 @@ game_fsm()
             break;
         case PLAY:
             if (slide) {
-                slide_block(0, start_width);
+                slide_block(current_row, current_width);
                 refresh_board();
                 if (wait(100, &button_state, 0)) return;
             }
             
             if (button_state) {
-                slide = 0;
+                waitForRelease();
+                current_row++;
             }
             
             
@@ -201,6 +206,15 @@ game_fsm()
             break;
         case LOSE:
             break;
+    }
+}
+
+
+void
+waitForRelease(void) {
+    while (1) {
+        if (button_state == 0)
+            return;
     }
 }
 
