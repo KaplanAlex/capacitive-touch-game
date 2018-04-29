@@ -43,18 +43,18 @@
 
 // WS2812 LEDs require GRB format
 typedef struct {
-    u_char green;
-    u_char red;
-    u_char blue;
+    unsigned char green;
+    unsigned char red;
+    unsigned char blue;
 } LED;
 
 
 // Prototypes.
 void start_spi(uint8_t *transmit, unsigned int count);
-void setLEDColor(u_int p, u_char r, u_char g, u_char b);
+void setLEDColor(unsigned int p, unsigned char r, unsigned char g, unsigned char b);
 void clearStrip();
-void fillStrip(u_char r, u_char g, u_char b);
-void gradualFill(u_int n, u_char r, u_char g, u_char b);
+void fillStrip(unsigned char r, unsigned char g, unsigned char b);
+void gradualFill(unsigned int n, unsigned char r, unsigned char g, unsigned char b);
 
 // Animations
 void animate_start();
@@ -68,8 +68,11 @@ void leds_from_press();
 void refresh_board();
 
 void game_fsm();
-void animate_block_loss(unsigned int row, unsigned int block);
+void slide_block(uint8_t row, uint8_t num_blocks);
+void animate_block_loss(unsigned int *lost_blocks, unsigned int num_lost_blocks);
 
+void shift_left(uint8_t row, uint8_t num_blocks);
+void shift_right(uint8_t row, uint8_t num_blocks);
 
 // SPI
 //unsigned int spi_led_idx = 0;
@@ -89,16 +92,20 @@ unsigned int random_num = 0;
 
 // Represent every LED with one byte.
 static LED led_board[NUM_LEDS];
+unsigned int maxLights[ROWS] = {4, 4, 3, 3, 2, 2, 1, 1};
+unsigned char startFilled[64];
 
 // Game parameters
-static unsigned int current_state = START;
-static unsigned int start_width = 4;
-static unsigned int current_row = 0;
-static unsigned int dir = 1;
+static int current_state = START;
+//static int leftmost_block = 0;
+static int start_width = 4;
+//static int current_width = 4;
+static int current_row = 0;
+static int dir = 1;
+
 
 static unsigned int leftmost_block = 0;
 static unsigned int current_width = 4;
-
 static unsigned int prev_leftmost = 4;
 static unsigned int prev_width = 4;
 
@@ -168,8 +175,14 @@ game_fsm()
 {
     static int pressed = 0;
     static int slide = 1;
+    
     unsigned int block;
     unsigned int next_width;
+    
+    unsigned int next_leftmost;
+    unsigned int lost_blocks[COLUMNS];
+    unsigned int num_lost_blocks = 0;
+    unsigned int change_leftmost = 0;
     switch(current_state) {
         case START:
             
@@ -201,32 +214,53 @@ game_fsm()
                 if (wait(100, &button_state, 0)) return;
             }
             
-            // Detect touch
             if (button_state) {
                 current_row++;
-                if (current_row == 1) return;
+                
+                
+                if (current_row == 1) {
+                    prev_width = current_width;
+                    prev_leftmost = leftmost_block;
+                    waitForRelease();
+                    return;
+                }
                 
                 next_width = current_width;
+                next_leftmost = leftmost_block;
                 
                 // Check the alignment of each block with the previous row.
                 for (block = leftmost_block; block < leftmost_block + current_width; block++) {
                     // Off to the left or off to the right
                     if (block < prev_leftmost || block > prev_leftmost + prev_width - 1) {
+                        
+                        // If the leftmost block is off, next_leftmost needs to be determined.
+                        if (block == leftmost_block) {
+                            change_leftmost = 1;
+                        }
+                        
+                        // Increment to determine the new next_leftmost block.
+                        if (change_leftmost) {
+                            next_leftmost++;
+                        }
                         // Decrement the width of the next row
                         next_width--;
-                        animate_block_loss(current_row, block);
+                        
+                        lost_blocks[num_lost_blocks] = (current_row - 1) * COLUMNS + block;
+                        num_lost_blocks++;
+                        //animate_block_loss(current_row - 1, block);
                     }
                 }
                 
-                
-                
+                animate_block_loss(lost_blocks, num_lost_blocks);
                 
                 // Save the current leftmost and width to check next row's alignment.
-                prev_leftmost = leftmost_block;
+                prev_leftmost = next_leftmost;
                 prev_width = next_width;
+                current_width = maxLights[current_row];
                 
-                //waitForRelease();
+                waitForRelease();
             }
+            
             
             
             break;
@@ -237,10 +271,11 @@ game_fsm()
     }
 }
 
-
+/* Blocks until all buttons are released. */
 void
 waitForRelease(void) {
     while (1) {
+        wait(1, &button_state, 0);
         if (button_state == 0)
             return;
     }
@@ -335,7 +370,7 @@ leds_from_press()
 /* Sets the color of the LED at index led_idx to the specified color
  * input in RGB format.
  */
-void setLEDColor(u_int led_idx, u_char r, u_char g, u_char b) {
+void setLEDColor(unsigned int led_idx, unsigned char r, unsigned char g, unsigned char b) {
     led_board[led_idx].green = g;
     led_board[led_idx].red = r;
     led_board[led_idx].blue = b;
@@ -349,7 +384,7 @@ void clearStrip() {
 /* Sets every LED on the board to the same color.
  * Transmits the updated board state.
  */
-void fillStrip(u_char r, u_char g, u_char b) {
+void fillStrip(unsigned char r, unsigned char g, unsigned char b) {
     int i;
     for (i = 0; i < NUM_LEDS; i++) {
         setLEDColor(i, r, g, b);  // set all LEDs to specified color
@@ -358,7 +393,7 @@ void fillStrip(u_char r, u_char g, u_char b) {
 }
 
 /* Fill with delay */
-void gradualFill(u_int n, u_char r, u_char g, u_char b) {
+void gradualFill(unsigned int n, unsigned char r, unsigned char g, unsigned char b) {
     int i;
     for (i = 0; i < n; i++){        // n is number of LEDs
         setLEDColor(i, r, g, b);
@@ -389,13 +424,13 @@ refresh_board()
     // send RGB color for every LED
     unsigned int i, j;
     for (i = 0; i < NUM_LEDS; i++) {
-        u_char *rgb = (u_char *)&led_board[i]; // get GRB color for this LED
+        unsigned char *rgb = (unsigned char *)&led_board[i]; // get GRB color for this LED
         
         // Transmit the colors in GRB order.
         for (j = 0; j < 3; j++) {
             
             // Mask out the MSB of each byte first.
-            u_char mask = 0x80;
+            unsigned char mask = 0x80;
             
             // Send each of the 8 bits as long and short pulses.
             while (mask != 0) {
@@ -421,6 +456,14 @@ refresh_board()
     __bis_SR_register(GIE);
 }
 
+void
+clearStart(void)
+{
+    int li;
+    for (li = 0; li < 64; li ++)
+        startFilled[li] = 0;
+}
+
 
 /* Start animation for STACKER
  * Randomly lights up LEDs on the board, then flashes 3 times
@@ -431,8 +474,37 @@ animate_start()
     clearStrip();
     if (wait(500, &button_state, 1)) return;
     int led;
+    
+    clearStart();
+    
+    int r1;
+    int r2;
     for (led = 0; led < (NUM_LEDS); led++) {
-        setLEDColor(rand32(0) + rand32(0), 0x08, 0x00, 0x00);
+        int numWhile = 0;
+        while (1) {
+            numWhile ++;
+            
+            if (numWhile >= 100 && led > 52) {
+                numWhile = 0;
+                break;
+            }
+            
+            r1 = rand32(0);
+            r2 = rand32(0);
+            if (startFilled[r1+r2] == 1)
+                continue;
+            else {
+                startFilled[r1+r2] = 1;
+                break;
+            }
+            
+        }
+        //    	r1 = rand32(0);
+        //    	r2 = rand32(0);
+        //    	startFilled[r1+r2] = 1;
+        
+        setLEDColor(r1 + r2, 0x08, 0x00, 0x00);
+        
         refresh_board();
         if (wait(100, &button_state, 1)) return;
     }
@@ -449,17 +521,24 @@ animate_start()
     
     
 }
+
+
 /* Fade animation for misaligned blocks
  *
  */
 void
-animate_block_loss(unsigned row, unsigned block)
+animate_block_loss(unsigned int *lost_blocks, unsigned int num_lost_blocks)
 {
+    
     int fade_idx;
     int color = 0x08;
-    for (fade_idx = 0; fade_idx < 4; fade_idx--) {
+    for (fade_idx = 0; fade_idx < 4; fade_idx++) {
         color >>= 1;
-        setLEDColor(row*COLUMNS + block, color, 0x00, 0x00);
+        int led;
+        for (led = 0; led < num_lost_blocks; led++) {
+            setLEDColor(lost_blocks[led], color, 0x00, 0x00);
+        }
+        refresh_board();
         wait(500, &button_state, 0);
     }
     
