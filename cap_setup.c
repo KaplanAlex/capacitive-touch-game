@@ -2,7 +2,7 @@
 
 #include "cap_setup.h"
 
-#define INTERRUPT_INTERVAL 500            // Interrupt every .1ms for timing.
+#define INTERRUPT_INTERVAL 8000            // Interrupt every .5ms for timing.
 
 /*
  * Setup Clocks, Timers, and SPI protocol.
@@ -14,8 +14,8 @@ setup()
     WDTCTL = WDTPW | WDTHOLD;
     
     /* Set the system clock to 1 MHz. */
-    DCOCTL = CALDCO_1MHZ;
-    BCSCTL1 = CALBC1_1MHZ;
+    DCOCTL = CALDCO_16MHZ;
+    BCSCTL1 = CALBC1_16MHZ;
     
     __bis_SR_register(GIE);                         // Enable interrupts.
     
@@ -80,6 +80,4 @@ setup_spi()
     P1SEL2 = BIT2 + BIT4;                         //P1.2 as MOSI and P1.4 as CLK
     
     UCA0CTL1 &= ~UCSWRST;                         //Initialize USCI state machine - active low
-    
-    IE2 |= UCA0TXIE;                              // Enable USCI0 TX interrupt
 }
