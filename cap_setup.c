@@ -21,11 +21,17 @@ setup()
     
     setup_spi();                                    // Setup the MSP430 to transmit over SPI
     
-    /* Setup TA0 to generate 1ms interrupts. */
-    TA0CTL |= TASSEL_2 + MC_1 + ID_0;               // Source from SMCLK, Continuous Mode
+    /* Setup TA0 to generate interrupts. */
+    TA0CTL |= TASSEL_2 + MC_1 + ID_0;               // Source from SMCLK, Up Mode
     
     TA0CCTL0 |= CCIE;                               // CCR0 interrupt enabled.
-    TA0CCR0 = INTERRUPT_INTERVAL;                   // Interrupt in .1ms.
+    TA0CCR0 = INTERRUPT_INTERVAL;                   // Interrupt in .5ms.
+    
+    /* Setup TA1 to generate interrupts. */
+    TA1CTL |= TASSEL_2 + MC_1 + ID_0;               // Source from SMCLK, Up Mode
+    
+    TA1CCTL0 |= CCIE;                               // CCR0 interrupt enabled.
+    TA1CCR0 = 16000;                                // Interrupt in 1ms.
     
     /* Set all capacitive buttons to inputs and enable pull up resistors. */
     /* Up - P2.2  Right - P2.3  Down - P2.4 Left - P2.5  Middle - P2.6 */
@@ -55,7 +61,7 @@ setup_spi()
     
     UCA0MCTL = 0;                                 // No modulation
     UCA0CTL1 |= UCSSEL_2;                         // SMCLK
-    UCA0BR0 = 3;                               // Dont divide the clock further
+    UCA0BR0 = 3;                                  // 16 MHz / 3 = .1875 us per bit
     UCA0BR1 = 0;
     
     P1DIR = BIT2 + BIT4;                          // Set P1.2 and P1.4 to output

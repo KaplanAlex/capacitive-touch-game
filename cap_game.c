@@ -15,8 +15,8 @@
 
 #include "cap_sense.h"
 #include "cap_setup.h"
+#include "timing_funcs.h"
 
-//#define INTERRUPT_INTERVAL 500            // Interrupt every .1ms for timing.
 #define NUM_LEDS 64
 
 // Transmit codes to send long pulse (1) and short pulse (0).
@@ -36,7 +36,12 @@
 #define WIN 2
 #define LOSE 3
 
-// WS2812 takes GRB format
+
+// Board size
+#define COLUMNS 8
+#define ROWS 8
+
+// WS2812 LEDs require GRB format
 typedef struct {
     u_char green;
     u_char red;
@@ -64,7 +69,6 @@ unsigned int frame_idx = 0;                // Track transmission count in interr
 uint8_t *dataptr;                         // Pointer which traverses the tx information
 
 
-
 // Capacitive Sensing
 /* Pressed Buttons: 0 - Up   1 - Right   2 - Down    3 - Left    4 - Middle */
 uint8_t button_state = 0x00;
@@ -73,9 +77,11 @@ uint8_t button_state = 0x00;
 // Represent every LED with one byte.
 static LED led_board[NUM_LEDS];
 
-// Game state
-current_state = START;
-
+// Game parameters
+int current_state = START;
+int leftmost_block = 0;
+int start_width = 4;
+static int dir = 1;
 
 int
 main(void)
@@ -91,25 +97,39 @@ main(void)
     // Initialize clocks, timers, and SPI protocol.
     setup();
     
-    //    while (1) {
-    //        leds_from_press();
-    //        refresh_board();
-    //    }
-    
-    // set strip color red
-    fillStrip(0x08, 0x00, 0x00);
-    
-    // show the strip
+    // Turn off the LED grid.
+    clearStrip();
     refresh_board();
     
-    // gradually fill for ever and ever
+    // Start shifting to the right.
+    dir = 1;
+    int slide= 1;
     while (1) {
-        gradualFill(NUM_LEDS, 0x00, 0x08, 0x00);  // green
-        gradualFill(NUM_LEDS, 0x00, 0x00, 0x08);  // blue
-        gradualFill(NUM_LEDS, 0x08, 0x00, 0x08);  // magenta
-        gradualFill(NUM_LEDS, 0x08, 0x08, 0x00);  // yellow
-        gradualFill(NUM_LEDS, 0x00, 0x08, 0x08);  // cyan
-        gradualFill(NUM_LEDS, 0x08, 0x00, 0x00);  // red
+
+        slide_block(0, start_width);
+        refresh_board();
+        wait(100, &button_state, 0);
+        
+        // Slide block
+//        if (slide) {
+//            
+//        }
+//        
+//        //leds_from_press();
+//        if (wait(100, &button_state, 1))
+//            slide = 0;
+//        else
+//            slide = 1;
+//        
+        //__delay_cycles(1000000);       // lazy delay
+        
+        
+        //        gradualFill(NUM_LEDS, 0x00, 0x08, 0x00);  // green
+        //        gradualFill(NUM_LEDS, 0x00, 0x00, 0x08);  // blue
+        //        gradualFill(NUM_LEDS, 0x08, 0x00, 0x08);  // magenta
+        //        gradualFill(NUM_LEDS, 0x08, 0x08, 0x00);  // yellow
+        //        gradualFill(NUM_LEDS, 0x00, 0x08, 0x08);  // cyan
+        //        gradualFill(NUM_LEDS, 0x08, 0x00, 0x00);  // red
     }
 }
 
@@ -120,28 +140,81 @@ main(void)
 void
 game_fsm()
 {
-    switch(current_state) {
-            
-    }
+    //    switch(current_state) {
+    //        case START:
+    //            //num_blocks = 4;
+    //
+    //    }
 }
 
 
-/* Writes the first bit of data via spi, triggering the spi
- * interrupt. Sets a global pointer and count which are accessed by the
- * spi driven interrupt.
- *
- * transmit - a pointer to a byte (array of bytes to be transmitted).
- * count    - the number of bytes to be transmitted.
+/* Called repeatedly to incrementally slides a row back and forth.
+ * Determines the movement direction and updates the global parameter
+ * "dir", then moves the led row one led to the left or right.
  */
 void
-start_spi(uint8_t *transmit, unsigned int count)
+slide_block(uint8_t row, uint8_t num_blocks)
 {
-    //Transmit the first byte and move the pointer to the next byte
-    dataptr = transmit;            // Set the data pointer for the spi interrupt.
-    frame_idx = count - 1;          // Set the global count for the spi interrupt.
-    UCA0TXBUF = *dataptr;          // Write the first byte to the buffer and send.
-    dataptr++;
+    // Shift right
+    if (dir) {
+        // Detect right edge.
+        if (leftmost_block + num_blocks >= COLUMNS) {
+            dir = 0; // change direction to left.
+            shift_left(row, num_blocks);
+        } else {
+            shift_right(row, num_blocks);
+        }
+    } else {
+        // Detect left edge.
+        if (leftmost_block == 0) {
+            dir = 1;
+            shift_right(row, num_blocks);
+        } else {
+            shift_left(row, num_blocks);
+        }
+    }
+    
 }
+
+
+/* Shifts a LED row left one block.
+ *
+ * row - index from 0 of the row to be shifted
+ * num_blocks - number of blocks in the row.
+ */
+void
+shift_left(uint8_t row, uint8_t num_blocks)
+{
+    // Remove rightmost block
+    int old_rightmost = row*COLUMNS + leftmost_block + num_blocks - 1;
+    setLEDColor(old_rightmost, 0x00, 0x00, 0x00);
+    
+    // update left_most block
+    leftmost_block--;
+    int new_leftmost = row*COLUMNS + leftmost_block;
+    setLEDColor(new_leftmost, 0x08, 0x00, 0x00);
+}
+
+
+/* Shifts a LED row right one block.
+ *
+ * row - index from 0 of the row to be shifted
+ * num_blocks - number of blocks in the row.
+ */
+void
+shift_right(uint8_t row, uint8_t num_blocks)
+{
+    // Remove leftmost block
+    int old_leftmost = row*COLUMNS + leftmost_block;
+    setLEDColor(old_leftmost, 0x00, 0x00, 0x00);
+    
+    // Add a new led to the right.
+    int new_rightmost = row*COLUMNS + leftmost_block + num_blocks;
+    setLEDColor(new_rightmost, 0x08, 0x00, 0x00);
+    leftmost_block++;
+    
+}
+
 
 /* Turns on LEDs on the board corrsponding to pressed buttons to illustrate
  * capacitive sense detected pressed.
@@ -160,19 +233,23 @@ leds_from_press()
 
 
 
-// Sets the color of a certain LED (0 indexed)
-void setLEDColor(u_int p, u_char r, u_char g, u_char b) {
-    led_board[p].green = g;
-    led_board[p].red = r;
-    led_board[p].blue = b;
+/* Sets the color of the LED at index led_idx to the specified color
+ * input in RGB format.
+ */
+void setLEDColor(u_int led_idx, u_char r, u_char g, u_char b) {
+    led_board[led_idx].green = g;
+    led_board[led_idx].red = r;
+    led_board[led_idx].blue = b;
 }
 
-// Clear the color of all LEDs (make them black/off)
+/* Sets the color of all LEDs on the board to black. */
 void clearStrip() {
-    fillStrip(0x00, 0x00, 0x00);  // black
+    fillStrip(0x00, 0x00, 0x00);
 }
 
-// Fill the strip with a solid color. This will update the strip.
+/* Sets every LED on the board to the same color.
+ * Transmits the updated board state.
+ */
 void fillStrip(u_char r, u_char g, u_char b) {
     int i;
     for (i = 0; i < NUM_LEDS; i++) {
@@ -181,7 +258,7 @@ void fillStrip(u_char r, u_char g, u_char b) {
     refresh_board();  // refresh strip
 }
 
-
+/* Fill with delay */
 void gradualFill(u_int n, u_char r, u_char g, u_char b) {
     int i;
     for (i = 0; i < n; i++){        // n is number of LEDs
@@ -191,47 +268,65 @@ void gradualFill(u_int n, u_char r, u_char g, u_char b) {
     }
 }
 
-
+/* Writes the contents of LED_BOARD to the grid of WS2812 LEDs.
+ *
+ * These LEDs transmit and interpret information via an NRZ protocol. This
+ * requires transmitting each bit as a long (550 - 850) or short
+ * (200 - 500) pulse representing a 1 or a 0 respectively.
+ *
+ * SPI is used for to send a number of 1's set by the macros HIGH_CODE and
+ * LOW_CODE for timing purposes.
+ *
+ * After writing the entire contents of LED_BOARD, this function delays for
+ * 50us to ensure future calls overwrite the current LED board state. (50us
+ * delay communicates end of new data).
+ */
 void
 refresh_board()
 {
-    __bic_SR_register(GIE);  // disable interrupts
+    // Disable interrupts to avoid normal SPI driven protocols.
+    __bic_SR_register(GIE);
     
     // send RGB color for every LED
     unsigned int i, j;
     for (i = 0; i < NUM_LEDS; i++) {
         u_char *rgb = (u_char *)&led_board[i]; // get GRB color for this LED
         
-        // send green, then red, then blue
+        // Transmit the colors in GRB order.
         for (j = 0; j < 3; j++) {
-            u_char mask = 0x80;    // b1000000
+            
+            // Mask out the MSB of each byte first.
+            u_char mask = 0x80;
             
             // Send each of the 8 bits as long and short pulses.
             while (mask != 0) {
+                
+                // Wait on the previous transmission to complete.
                 while (!(IFG2 & UCA0TXIFG))
-                    ;    // wait to transmit
-                if (rgb[j] & mask) {        // most significant bit first
-                    UCA0TXBUF = HIGH_CODE;  // send 1
+                    ;
+                if (rgb[j] & mask) {
+                    UCA0TXBUF = HIGH_CODE;  // Send a long pulse for 1.
                 } else {
-                    UCA0TXBUF = LOW_CODE;   // send 0
+                    UCA0TXBUF = LOW_CODE;   // Send a short pulse for 0.
                 }
                 
-                mask >>= 1;  // check next bit
+                mask >>= 1;  // Send the next bit.
             }
         }
     }
     
-    // send RES code for at least 50 us (800 cycles at 16 MHz)
+    // Delay for at least 50us to signify end of transmission.
     __delay_cycles(800);
     
-    __bis_SR_register(GIE);    // enable interrupts
+    // Re-enable interrupts
+    __bis_SR_register(GIE);
 }
 
 
 
 
 
-/* Timer A0 interrupt service routine for timing. */
+/* Timer A0 interrupt service for capacitive touch timing */
 #if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void Timer_A (void)
@@ -241,8 +336,27 @@ void __attribute__ ((interrupt(TIMER0_A0_VECTOR))) Timer_A0 (void)
 #error Compiler not supported!
 #endif
 {
-    
-    /* Track pulse rx time and update button pressed state upon new pulse transmission. */
+    __bic_SR_register(LPM0_bits);    // Exit low power mode 0 locally.
+    /* Track pulse rx time and update button pressed state upon
+     * new pulse transmission.
+     */
     check_pulse(&button_state);
+    leds_from_press();
+    
+    //__bic_SR_register_on_exit(LPM0_bits);    // Exit low power mode 0.
+    
+}
+
+
+/* Timer A1 interrupt service routine for general timing. */
+#if defined(__TI_COMPILER_VERSION__) || defined(__IAR_SYSTEMS_ICC__)
+#pragma vector=TIMER1_A0_VECTOR
+__interrupt void Timer_A1 (void)
+#elif defined(__GNUC__)
+void __attribute__ ((interrupt(TIMER1_A0_VECTOR))) Timer_A1 (void)
+#else
+#error Compiler not supported!
+#endif
+{
     __bic_SR_register_on_exit(LPM0_bits);    // Exit low power mode 0.
 }
