@@ -58,6 +58,8 @@ void gradualFill(unsigned int n, unsigned char r, unsigned char g, unsigned char
 
 // Animations
 void animate_start();
+void animate_win();
+void animate_lose();
 
 // RNG
 unsigned int generate_seed(void);
@@ -76,9 +78,9 @@ void shift_right(uint8_t row, uint8_t num_blocks);
 
 // SPI
 //unsigned int spi_led_idx = 0;
-unsigned int data_len = 24;               // The number of bytes to be transmitted
-unsigned int frame_idx = 0;                // Track transmission count in interrupts
-uint8_t *dataptr;                         // Pointer which traverses the tx information
+unsigned int data_len = 24;             // The number of bytes to be transmitted
+unsigned int frame_idx = 0;             // Track transmission count in interrupts
+uint8_t *dataptr;                       // Pointer which traverses the tx information
 
 
 // Capacitive Sensing
@@ -106,7 +108,7 @@ static int dir = 1;
 
 static unsigned int leftmost_block = 0;
 static unsigned int current_width = 4;
-static unsigned int prev_leftmost = 4;
+static unsigned int prev_leftmost = 0;
 static unsigned int prev_width = 4;
 
 
@@ -137,32 +139,13 @@ main(void)
     // Initialize the game FSM
     dir = 1;
     current_state = START;
+    
+  
+    
+    
     while (1) {
         game_fsm();
-        //        slide_block(0, start_width);
-        //        refresh_board();
-        //        wait(100, &button_state, 0);
         
-        // Slide block
-        //        if (slide) {
-        //
-        //        }
-        //
-        //        //leds_from_press();
-        //        if (wait(100, &button_state, 1))
-        //            slide = 0;
-        //        else
-        //            slide = 1;
-        //
-        //__delay_cycles(1000000);       // lazy delay
-        
-        
-        //        gradualFill(NUM_LEDS, 0x00, 0x08, 0x00);  // green
-        //        gradualFill(NUM_LEDS, 0x00, 0x00, 0x08);  // blue
-        //        gradualFill(NUM_LEDS, 0x08, 0x00, 0x08);  // magenta
-        //        gradualFill(NUM_LEDS, 0x08, 0x08, 0x00);  // yellow
-        //        gradualFill(NUM_LEDS, 0x00, 0x08, 0x08);  // cyan
-        //        gradualFill(NUM_LEDS, 0x08, 0x00, 0x00);  // red
     }
 }
 
@@ -174,10 +157,10 @@ void
 game_fsm()
 {
     static int pressed = 0;
-    static int slide = 1;
     
     unsigned int block;
     unsigned int next_width;
+    unsigned int found_left;
     
     unsigned int next_leftmost;
     unsigned int lost_blocks[COLUMNS];
@@ -198,25 +181,31 @@ game_fsm()
             if (pressed) {
                 if (!button_state) {
                     clearStrip();
-                    slide = 1;
                     pressed = 0;
                     current_row = 0;
                     current_width = start_width;
+                    prev_width = start_width;
+                    prev_leftmost = 0;
+                    found_left = 0;
                     current_state = PLAY;
                 }
             }
             
             break;
         case PLAY:
-            if (slide) {
-                slide_block(current_row, current_width);
-                refresh_board();
-                if (wait(100, &button_state, 0)) return;
+            // Check if all blocks were lost
+            if (!prev_width) {
+                current_state = LOSE;
+                return;
             }
+            
+            slide_block(current_row, current_width);
+            refresh_board();
+            if (wait(100, &button_state, 0)) return;
+            
             
             if (button_state) {
                 current_row++;
-                
                 
                 if (current_row == 1) {
                     prev_width = current_width;
@@ -225,6 +214,8 @@ game_fsm()
                     return;
                 }
                 
+                found_left = 0;
+                change_leftmost = 0;
                 next_width = current_width;
                 next_leftmost = leftmost_block;
                 
@@ -239,7 +230,7 @@ game_fsm()
                         }
                         
                         // Increment to determine the new next_leftmost block.
-                        if (change_leftmost) {
+                        if (change_leftmost && !found_left) {
                             next_leftmost++;
                         }
                         // Decrement the width of the next row
@@ -248,6 +239,8 @@ game_fsm()
                         lost_blocks[num_lost_blocks] = (current_row - 1) * COLUMNS + block;
                         num_lost_blocks++;
                         //animate_block_loss(current_row - 1, block);
+                    } else {
+                        found_left = 1;
                     }
                 }
                 
@@ -261,12 +254,21 @@ game_fsm()
                 waitForRelease();
             }
             
-            
+            if (current_row >= ROWS) {
+                current_state = WIN;
+                return;
+            }
             
             break;
         case WIN:
+            clearStrip();
+            animate_win();
+            current_state = START;
             break;
         case LOSE:
+            clearStrip();
+            animate_lose();
+            current_state = START;
             break;
     }
 }
@@ -280,7 +282,6 @@ waitForRelease(void) {
             return;
     }
 }
-
 
 /* Called repeatedly to incrementally slides a row back and forth.
  * Determines the movement direction and updates the global parameter
@@ -499,9 +500,9 @@ animate_start()
             }
             
         }
-        //    	r1 = rand32(0);
-        //    	r2 = rand32(0);
-        //    	startFilled[r1+r2] = 1;
+        //      r1 = rand32(0);
+        //      r2 = rand32(0);
+        //      startFilled[r1+r2] = 1;
         
         setLEDColor(r1 + r2, 0x08, 0x00, 0x00);
         
@@ -519,19 +520,21 @@ animate_start()
     fillStrip(0x08, 0x00, 0x00);
     if (wait(500, &button_state, 1)) return;
     
-    
 }
 
 
-/* Fade animation for misaligned blocks
- *
- */
+/* Fade animation for misaligned blocks. */
 void
 animate_block_loss(unsigned int *lost_blocks, unsigned int num_lost_blocks)
 {
     
     int fade_idx;
     int color = 0x08;
+    
+    // If no blocks were lost, just return.
+    if (!num_lost_blocks) return;
+    
+    // Fade animation.
     for (fade_idx = 0; fade_idx < 4; fade_idx++) {
         color >>= 1;
         int led;
@@ -541,9 +544,163 @@ animate_block_loss(unsigned int *lost_blocks, unsigned int num_lost_blocks)
         refresh_board();
         wait(500, &button_state, 0);
     }
+}
+
+/* Win animation. */
+void
+animate_win()
+{
+    clearStrip();
+    
+    int row;
+    int led;
+    int offset;
+    
+    
+    for (row = 0; row < ROWS; row++) {
+        offset = row * COLUMNS;
+        for (led = 0; led < COLUMNS; led+=2) {
+            setLEDColor(offset + led, 0x00, 0x08, 0x00);
+        }
+        refresh_board();
+        if (wait(300, &button_state, 0)) return;
+    }
+    
+    for (row = 0; row < ROWS; row++) {
+        offset = row * COLUMNS;
+        for (led = 0; led < COLUMNS; led+=2) {
+            setLEDColor(offset + led, 0x00, 0x00, 0x00);
+        }
+        refresh_board();
+        if (wait(300, &button_state, 0)) return;
+    }
+    
+    for (row = 0; row < ROWS; row++) {
+        offset = row * COLUMNS;
+        for (led = 1; led < COLUMNS; led+=2) {
+            setLEDColor(offset + led, 0x00, 0x08, 0x00);
+        }
+        refresh_board();
+        if (wait(300, &button_state, 0)) return;
+    }
+    
+    for (row = 0; row < ROWS; row++) {
+        offset = row * COLUMNS;
+        for (led = 1; led < COLUMNS; led+=2) {
+            setLEDColor(offset + led, 0x00, 0x00, 0x00);
+        }
+        refresh_board();
+        if (wait(300, &button_state, 0)) return;
+    }
+    
+    //
+    //    for (row = 0; row < ROWS - 5; row++) {
+    //        offset = row * COLUMNS;
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + led, 0x00, 0x08, 0x00);
+    //        }
+    //
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + COLUMNS + led, 0x00, 0x08, 0x08);
+    //        }
+    //
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + (2 * COLUMNS) + led, 0x00, 0x00, 0x08);
+    //        }
+    //
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + (3 * COLUMNS) + led, 0x00, 0x08, 0x08);
+    //        }
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + (4 * COLUMNS) + led, 0x00, 0x08, 0x00);
+    //        }
+    //        refresh_board();
+    //        wait(500, &button_state, 0);
+    //        clearStrip();
+    //    }
+    //
+    //    for (row = ROWS - 6; row > 0; row--) {
+    //        offset = row * COLUMNS;
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + led, 0x00, 0x08, 0x00);
+    //        }
+    //
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + COLUMNS + led, 0x00, 0x08, 0x08);
+    //        }
+    //
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + (2 * COLUMNS) + led, 0x00, 0x00, 0x08);
+    //        }
+    //
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + (3 * COLUMNS) + led, 0x00, 0x08, 0x08);
+    //        }
+    //        for (led = 0; led < COLUMNS; led+=2) {
+    //            setLEDColor(offset + (4 * COLUMNS) + led, 0x00, 0x08, 0x00);
+    //        }
+    //        refresh_board();
+    //        wait(500, &button_state, 0);
+    //        clearStrip();
+    //    }
+    
     
 }
 
+/* Lose animation */
+void
+animate_lose(void)
+{
+    int li = 0;
+    while (1) {
+        setLEDColor(li, 0x08, 0x00, 0x00);
+        refresh_board();
+        if ((li / ROWS) % 2 == 0) {
+            if ((li % 8) == 7) {
+                li += 8;
+                wait(100, &button_state, 0);
+                continue;
+            }
+            li ++;
+        } else {
+            if ((li % 8) == 0) {
+                li += 8;
+                wait(100, &button_state, 0);
+                continue;
+            }
+            li --;
+        }
+        if (li >= NUM_LEDS - 1) {
+            break;
+        }
+        wait(100, &button_state, 0);
+    }
+    li = 0;
+    while (1) {
+        setLEDColor(li, 0x00, 0x00, 0x00);
+        refresh_board();
+        if ((li / ROWS) % 2 == 0) {
+            if ((li % 8) == 7) {
+                li += 8;
+                wait(100, &button_state, 0);
+                continue;
+            }
+            li ++;
+        } else {
+            if ((li % 8) == 0) {
+                li += 8;
+                wait(100, &button_state, 0);
+                continue;
+            }
+            li --;
+        }
+        if (li >= NUM_LEDS - 1) {
+            break;
+        }
+        wait(100, &button_state, 0);
+    }
+    
+}
 
 /*
  * Generates a random number between 0 and 31 based on a LFSR.
