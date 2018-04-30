@@ -17,6 +17,10 @@
 #include "cap_setup.h"
 #include "timing_funcs.h"
 
+// Board size
+#define NUM_LEDS 128
+#define COLUMNS 8
+#define ROWS 16
 
 // Transmit codes to send long pulse (1) and short pulse (0).
 #define HIGH_CODE   (0xF0)      // b11110000
@@ -39,14 +43,13 @@
 #define YELLOW        13
 #define PURPLE        14
 
-
-#define SELF          YELLOW
+#define BRIGHTNESS    3
 
 // Global states
 #define CHOOSE_GAME 0
 #define STACKER 1
 #define DODGE_GAME 2
-
+#define SELF          YELLOW
 
 // Game states
 #define START 0
@@ -55,10 +58,6 @@
 #define LOSE 3
 
 
-// Board size
-#define NUM_LEDS 128
-#define COLUMNS 8
-#define ROWS 16
 
 // WS2812 LEDs require GRB format
 typedef struct {
@@ -67,14 +66,16 @@ typedef struct {
     unsigned char blue;
 } LED;
 
+/* Function Prototypes */
 
-// Prototypes.
+// Led color manipulation.
 void start_spi(uint8_t *transmit, unsigned int count);
-void setLEDColor(unsigned int p, unsigned char r, unsigned char g, unsigned char b);
 void clearStrip();
 void fillStrip(uint8_t color);
 void expand_color(unsigned int led);
 void set_color(unsigned int led, uint8_t color);
+void leds_from_press();
+void refresh_board();
 
 // Animations
 void animate_start();
@@ -86,11 +87,8 @@ unsigned int generate_seed(void);
 unsigned int rand32(int seed);
 void waitForRelease(void);
 
-void leds_from_press();
-void refresh_board();
-
-// Stacker
-void game_fsm();
+// Stacker Functions
+void stacker_fsm();
 void slide_block(uint8_t row, uint8_t num_blocks);
 void animate_block_loss(unsigned int *lost_blocks, unsigned int num_lost_blocks);
 void shift_left(uint8_t row, uint8_t num_blocks);
@@ -100,14 +98,15 @@ void shift_right(uint8_t row, uint8_t num_blocks);
 void move_character(uint8_t direction);
 uint8_t buttons_to_direction();
 void dodge_game_fsm();
+void update_falling_blocks();
 
-// SPI
-//unsigned int spi_led_idx = 0;
-unsigned int data_len = 24;             // The number of bytes to be transmitted
-unsigned int frame_idx = 0;             // Track transmission count in interrupts
-uint8_t *dataptr;                       // Pointer which traverses the tx information
+/* Global Parameters */
 
-LED expanded_color = {0, 0, 0};
+// Represent every LED with one byte.
+LED expanded_color = {0, 0, 0};         // Single object colors are expaded into.
+static uint8_t led_board[NUM_LEDS];
+unsigned int maxLights[ROWS] = {4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1};
+unsigned char startFilled[NUM_LEDS];
 
 // Capacitive Sensing
 /* Pressed Buttons: 0 - Up   1 - Right   2 - Down    3 - Left    4 - Middle */
@@ -117,19 +116,15 @@ uint8_t button_state = 0x00;
 unsigned int rng_seed;
 unsigned int random_num = 0;
 
-
-// Represent every LED with one byte.
-static uint8_t led_board[NUM_LEDS];
-unsigned int maxLights[ROWS] = {4, 4, 4, 4, 3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1};
-unsigned char startFilled[NUM_LEDS];
-
-// STACKER Game parameters
+// Global game parameters
 static int global_state = CHOOSE_GAME;
+static uint8_t GAME_COLOR = BLUE;
+
+// STACKER game parameters
 static int current_state = START;
 static int start_width = 4;
 static int current_row = 0;
 static int dir = 1;
-static uint8_t GAME_COLOR = BLUE;
 
 static unsigned int leftmost_block = 0;
 static unsigned int current_width = 4;
@@ -138,9 +133,7 @@ static unsigned int prev_width = 4;
 
 // Dodge game parameters
 static uint8_t position = 67;
-
-
-static unsigned int fall_time = 500; //0.5s
+static unsigned int fall_time = 500;        //0.5s
 static unsigned int fall_time_count = 0;
 
 int
@@ -165,11 +158,13 @@ main(void)
     clearStrip();
     refresh_board();
     
-    // Initialize the game FSM
+    
     dir = 1;
     current_state = START;
     int pressed = 0;
     int next_game = 0;
+    
+    // Initialize the game controlling FSM - choose stacker or dodge game
     while (1) {
         switch (global_state) {
             case CHOOSE_GAME:
@@ -201,7 +196,7 @@ main(void)
                 }
                 break;
             case STACKER:
-                game_fsm();
+                stacker_fsm();
                 break;
             case DODGE_GAME:
                 dodge_game_fsm();
@@ -213,24 +208,24 @@ main(void)
 }
 
 
-/* Iterates over the STACKER FSM. */
+/* Iterates over the stacker FSM. */
 void
-game_fsm()
+stacker_fsm()
 {
     static int pressed = 0;
     
     unsigned int block;
     unsigned int next_width;
     unsigned int found_left;
-    
     unsigned int next_leftmost;
     unsigned int lost_blocks[COLUMNS];
     unsigned int num_lost_blocks = 0;
     unsigned int change_leftmost = 0;
+    
     switch(current_state) {
         case START:
             
-            // Initialize STACKER
+            // Initialize Stacker parameters
             pressed = 0;
             current_row = 0;
             current_width = start_width;
@@ -241,8 +236,7 @@ game_fsm()
             current_state = PLAY;
             break;
         case PLAY:
-            
-            
+            // Move block back and forth.
             slide_block(current_row, current_width);
             refresh_board();
             if (wait(100, &button_state, 0)) return;
@@ -251,6 +245,7 @@ game_fsm()
             if (button_state) {
                 current_row++;
                 
+                // The first row can be stopped anywhere.
                 if (current_row == 1) {
                     prev_width = current_width;
                     prev_leftmost = leftmost_block;
@@ -298,12 +293,13 @@ game_fsm()
                 waitForRelease();
             }
             
-            // Check if all blocks were lost
+            // Check if all blocks were lost and transition.
             if (!prev_width) {
                 current_state = LOSE;
                 return;
             }
             
+            // Detect win and transition.
             if (current_row >= ROWS) {
                 current_state = WIN;
                 return;
@@ -313,11 +309,15 @@ game_fsm()
         case WIN:
             clearStrip();
             animate_win();
+            
+            // Return to the outer fsm.
             global_state = CHOOSE_GAME;
             break;
         case LOSE:
             clearStrip();
             animate_lose();
+            
+            // Return to the outer fsm.
             global_state = CHOOSE_GAME;
             break;
     }
@@ -328,8 +328,10 @@ void
 dodge_game_fsm()
 {
     int rng_col;
+    int rng_count;
     switch (current_state) {
         case START:
+            // Start the player in the middle of the board.
             position = 67;
             fall_time_count = 0;
             clearStrip();
@@ -340,31 +342,38 @@ dodge_game_fsm()
             break;
         case PLAY:
             
-            move_character(buttons_to_direction());
-            wait(100, &button_state, 0);
             // Move blocks down half second.
-//            if (fall_time_count > fall_time) {
-//                // Move blocks down
-//                update_falling_blocks();
-//                // Set blocks in top row.
-//                for (rng_col; rng_col < COLUMNS; rng_col++) {
-//                    if (rand32(0) < 8) {
-//                        led_board[(ROWS-1) * COLUMNS + rng_col] = 1;
-//                    }
-//                }
-//                
-//                // Transmit the new LED board.
-//                refresh_board();
-//                fall_time_count = 0;
-//            }
-//            
-//            if (button_state) {
-//                move_character(buttons_to_direction());
-//                wait(100, &button_state, 0);
-//            }
+            if (fall_time_count > fall_time) {
+                
+                // Move blocks down
+                update_falling_blocks();
+                
+                // Randomly generate at most 4 blocks in the top row.
+                rng_count = 0;
+                for (rng_col; rng_col < COLUMNS; rng_col++) {
+                    if (rng_count > 4) break;
+                    
+                    // Light up the the led in rng_col.
+                    if (rand32(0) < 3) {
+                        led_board[((ROWS-1) * COLUMNS) + rng_col] = RED;
+                        rng_count++;
+                    }
+                }
+            
+                // Transmit the new LED board.
+                refresh_board();
+                fall_time_count = 0;
+            }
+            
+            // Check for button presses and move character.
+            move_character(buttons_to_direction());
+            
+            // Delay .1s to control movement.
+            wait(100, &button_state, 0);
             
             break;
         case LOSE:
+            // Freeze board on lose, then transition.
             wait(2000, &button_state, 0);
             clearStrip();
             animate_lose();
@@ -413,6 +422,7 @@ update_falling_blocks()
     // Detect all leds falling out of the board (in first row).
     for (led = 0; led < COLUMNS; led++) {
         if (led_board[led]) {
+            if (led == position) continue;
             led_board[led] = OFF;
         }
     }
@@ -420,7 +430,7 @@ update_falling_blocks()
     for (led = COLUMNS; led < NUM_LEDS; led++) {
         // If the led is ON, set the LED below it on, and turn it off.
         if (led_board[led]) {
-            
+            if (led == position) continue;
             // COLLISION!!!
             if ((led - COLUMNS) == position) {
                 set_color(position, RED);
@@ -434,7 +444,7 @@ update_falling_blocks()
     }
 }
 
-/* Moves the character based on direction
+/* Moves the character based on direction and detect colisions.
  * 1 - up, 2 - right, 3 - down, 4 - left
  */
 void
@@ -468,7 +478,7 @@ move_character(uint8_t direction)
                 set_color(position, OFF);
                 position -= 8;
             } else {
-                return
+                return;
             }
             break;
         case 4:
@@ -542,13 +552,11 @@ shift_left(uint8_t row, uint8_t num_blocks)
     // Remove rightmost block
     int old_rightmost = row*COLUMNS + leftmost_block + num_blocks - 1;
     set_color(old_rightmost, OFF);
-    //setLEDColor(old_rightmost, 0x00, 0x00, 0x00);
     
     // update left_most block
     leftmost_block--;
     int new_leftmost = row*COLUMNS + leftmost_block;
     set_color(new_leftmost, GAME_COLOR);
-    //setLEDColor(new_leftmost, 0x08, 0x00, 0x00);
 }
 
 
@@ -563,12 +571,10 @@ shift_right(uint8_t row, uint8_t num_blocks)
     // Remove leftmost block
     int old_leftmost = row*COLUMNS + leftmost_block;
     set_color(old_leftmost, OFF);
-    //setLEDColor(old_leftmost, 0x00, 0x00, 0x00);
     
     // Add a new led to the right.
     int new_rightmost = row*COLUMNS + leftmost_block + num_blocks;
     set_color(new_rightmost, GAME_COLOR);
-    //setLEDColor(new_rightmost, 0x08, 0x00, 0x00);
     leftmost_block++;
     
 }
@@ -609,62 +615,59 @@ expand_color(unsigned int led)
     expanded_color.green = 0x00;
     expanded_color.blue = 0x00;
     
+    // Each value in led_board is a uint8_t corresponding to a predefined color.
     switch (led_board[led]) {
         case RED:
-            expanded_color.red = 0x08;
+            expanded_color.red = (0x08 * BRIGHTNESS);
             break;
         case GREEN:
-            expanded_color.green = 0x08;
+            expanded_color.green = (0x08 * BRIGHTNESS);
             break;
         case BLUE:
-            expanded_color.blue = 0x08;
+            expanded_color.blue = (0x08 * BRIGHTNESS);
             break;
         case RED_FADE_1:
-            expanded_color.red = 0x04;
+            expanded_color.red = (0x04 * BRIGHTNESS);
             break;
         case RED_FADE_2:
-            expanded_color.red = 0x02;
+            expanded_color.red = (0x02 * BRIGHTNESS);
             break;
         case RED_FADE_3:
-            expanded_color.red = 0x01;
+            expanded_color.red = (0x01 * BRIGHTNESS);
             break;
         case BLUE_FADE_1:
-            expanded_color.blue = 0x04;
+            expanded_color.blue = (0x04 * BRIGHTNESS);
             break;
         case BLUE_FADE_2:
-            expanded_color.blue = 0x02;
+            expanded_color.blue = (0x02 * BRIGHTNESS);
             break;
         case BLUE_FADE_3:
-            expanded_color.blue = 0x01;
+            expanded_color.blue = (0x01 * BRIGHTNESS);
             break;
         case GREEN_FADE_1:
-            expanded_color.green = 0x04;
+            expanded_color.green = (0x04 * BRIGHTNESS);
             break;
         case GREEN_FADE_2:
-            expanded_color.green = 0x02;
+            expanded_color.green = (0x02 * BRIGHTNESS);
             break;
         case GREEN_FADE_3:
-            expanded_color.green = 0x01;
+            expanded_color.green = (0x01 * BRIGHTNESS);
+            break;
         case YELLOW:
-            expanded_color.red = 0x08;
-            expanded_color.green = 0x05;
+            expanded_color.red = (0x12 * BRIGHTNESS);
+            expanded_color.green = (0x09 * BRIGHTNESS);
+            break;
         case PURPLE:
-            expanded_color.red = 0x08;
-            expanded_color.blue = 0x08;
+            expanded_color.red = (0x08 * BRIGHTNESS);
+            expanded_color.blue = (0x08 * BRIGHTNESS);
+            break;
         default:
             break;
     }
     
     
 }
-/* Sets the color of the LED at index led_idx to the specified color
- * input in RGB format.
- */
-void setLEDColor(unsigned int led_idx, unsigned char r, unsigned char g, unsigned char b) {
-    //led_board[led_idx].green = g;
-    //led_board[led_idx].red = r;
-    //led_board[led_idx].blue = b;
-}
+
 
 /* Sets the color of all LEDs on the board to black. */
 void clearStrip() {
@@ -678,7 +681,6 @@ void fillStrip(uint8_t color) {
     int i;
     for (i = 0; i < NUM_LEDS; i++) {
         set_color(i, color);
-        //setLEDColor(i, r, g, b);  // set all LEDs to specified color
     }
     refresh_board();  // refresh strip
 }
@@ -732,13 +734,16 @@ refresh_board()
         }
     }
     
-    // Delay for at least 50us to send RES code and signify end of transmission.
+    /* Lock CPU to elongate transmission for 50us to send RES code and 
+     * signify end of transmission.
+     */
     __delay_cycles(800);
     
     // Re-enable interrupts
     __bis_SR_register(GIE);
 }
 
+/* Clear the color representation array for start animation. */
 void
 clearStart(void)
 {
@@ -782,12 +787,8 @@ animate_start()
             }
             
         }
-        //      r1 = rand32(0);
-        //      r2 = rand32(0);
-        //      startFilled[r1+r2] = 1;
-        
+
         set_color(r1 + r2, GAME_COLOR);
-        //setLEDColor(r1 + r2, 0x08, 0x00, 0x00);
         
         refresh_board();
         if (wait(100, &button_state, 1)) return;
@@ -859,7 +860,6 @@ animate_win()
         offset = row * COLUMNS;
         for (led = 0; led < COLUMNS; led+=2) {
             set_color(offset + led, GREEN);
-            //setLEDColor(offset + led, 0x00, 0x08, 0x00);
         }
         refresh_board();
         if (wait(100, &button_state, 0)) return;
@@ -869,7 +869,6 @@ animate_win()
         offset = row * COLUMNS;
         for (led = 0; led < COLUMNS; led+=2) {
             set_color(offset + led, OFF);
-            //setLEDColor(offset + led, 0x00, 0x00, 0x00);
         }
         refresh_board();
         if (wait(100, &button_state, 0)) return;
@@ -879,7 +878,6 @@ animate_win()
         offset = row * COLUMNS;
         for (led = 1; led < COLUMNS; led+=2) {
             set_color(offset + led, GREEN);
-            //setLEDColor(offset + led, 0x00, 0x08, 0x00);
         }
         refresh_board();
         if (wait(100, &button_state, 0)) return;
@@ -889,7 +887,6 @@ animate_win()
         offset = row * COLUMNS;
         for (led = 1; led < COLUMNS; led+=2) {
             set_color(offset + led, OFF);
-            //setLEDColor(offset + led, 0x00, 0x00, 0x00);
         }
         refresh_board();
         if (wait(100, &button_state, 0)) return;
@@ -928,7 +925,6 @@ animate_lose(void)
     int li = 0;
     while (1) {
         set_color(li, RED);
-        //setLEDColor(li, 0x08, 0x00, 0x00);
         refresh_board();
         if ((li / ROWS) % 2 == 0) {
             if ((li % COLUMNS) == COLUMNS - 1) {
@@ -953,7 +949,6 @@ animate_lose(void)
     li = 0;
     while (1) {
         set_color(li, OFF);
-        //setLEDColor(li, 0x00, 0x00, 0x00);
         refresh_board();
         if ((li / ROWS) % 2 == 0) {
             if ((li % COLUMNS) == COLUMNS - 1) {
