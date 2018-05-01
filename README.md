@@ -1,8 +1,8 @@
 # capacitive-touch-game
 ELEC 327 Final Project
 
-Alexander Kaplan
-Alfonso Morera
+Alexander Kaplan,
+Alfonso Morera,
 Neil Seoni
 
 Demo: https://www.youtube.com/watch?v=ffcCMSMpSBw&feature=youtu.be
