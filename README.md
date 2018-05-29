@@ -7,7 +7,7 @@ Neil Seoni
 
 [Demo](https://www.youtube.com/watch?v=ffcCMSMpSBw)
 
-[![Everything Is AWESOME](https://img.youtube.com/vi/ffcCMSMpSBw/0.jpg)](https://www.youtube.com/watch?v=ffcCMSMpSBw"Everything Is AWESOME")
+[![Everything Is AWESOME](//img.youtube.com/vi/ffcCMSMpSBw/0.jpg)](//www.youtube.com/watch?v=ffcCMSMpSBw"Everything Is AWESOME")
 
 
 
