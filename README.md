@@ -5,8 +5,8 @@ Alexander Kaplan,
 Alfonso Morera,
 Neil Seoni
 
-Demo: 
-[![Game Video Demo](http://img.youtube.com/vi/ffcCMSMpSBw/0.jpg)](http://www.youtube.com/watch?v= ffcCMSMpSBw "Video Title")
+[Demo:](https://www.youtube.com/watch?v=ffcCMSMpSBw&feature=youtu.be)
+
 
 Our project focused on the design and implementation of capacitive 
 touch buttons as well as management of large quantities of data 
