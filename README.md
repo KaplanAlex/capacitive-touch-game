@@ -5,9 +5,11 @@ Alexander Kaplan,
 Alfonso Morera,
 Neil Seoni
 
-[Demo](https://www.youtube.com/watch?v=ffcCMSMpSBw&feature=youtu.be)
+[Demo](https://www.youtube.com/watch?v=ffcCMSMpSBw)
 
-[![Video Demo](https://img.youtube.com/vi/ffcCMSMpSBw/0.jpg)](https://www.youtube.com/watch?v=ffcCMSMpSBw&feature=youtu.be)
+[![Everything Is AWESOME](https://img.youtube.com/vi/ffcCMSMpSBw/0.jpg)](https://www.youtube.com/watch?v=ffcCMSMpSBw"Everything Is AWESOME")
+
+
 
 
 Our project focused on the design and implementation of capacitive 
