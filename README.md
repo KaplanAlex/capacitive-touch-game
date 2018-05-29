@@ -5,7 +5,9 @@ Alexander Kaplan,
 Alfonso Morera,
 Neil Seoni
 
-[Demo:](https://www.youtube.com/watch?v=ffcCMSMpSBw&feature=youtu.be)
+[Demo](https://www.youtube.com/watch?v=ffcCMSMpSBw&feature=youtu.be)
+
+[![Video Demo](https://img.youtube.com/vi/ffcCMSMpSBw&feature=youtu.be/0.jpg)](https://www.youtube.com/watch?v=ffcCMSMpSBw&feature=youtu.be)
 
 
 Our project focused on the design and implementation of capacitive 
