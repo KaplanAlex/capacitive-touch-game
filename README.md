@@ -7,7 +7,7 @@ Neil Seoni
 
 [Demo](https://www.youtube.com/watch?v=ffcCMSMpSBw)
 
-[![Video Demo](http://img.youtube.com/vi/ffcCMSMpSBw/0.jpg)](http://www.youtube.com/watch?v=ffcCMSMpSBw "Video Demo")
+[![Video Demo](https://i.imgur.com/SZCrklM.png)](http://www.youtube.com/watch?v=ffcCMSMpSBw "Video Demo")
 
 
 Our project focused on the design and implementation of capacitive 
