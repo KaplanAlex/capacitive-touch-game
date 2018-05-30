@@ -21,12 +21,12 @@ As briefly mentioned in the Overview section, we created a capacitive touch base
 PCB
 As depicted in the image below, our PCB interface consisted of five circular 0.5” pads which served as up, down, left, right, and center capacitive touch buttons, as well as a five LED display (bottom left) representing the buttons’ pressed states. 
 
-[Imgur](https://i.imgur.com/aH4VqKW.png)
+![Imgur](https://i.imgur.com/aH4VqKW.png)
 Figure 1: PCB Board Design
 
 Each pad was connected in parallel with a PWM signal’s path from P2.1 to one of five receive pins (P2.2-P2.6) as shown in the figure below.
 
-[Imgur](https://i.imgur.com/0JYk5dQ.png)
+![Imgur](https://i.imgur.com/0JYk5dQ.png)
 Figure 2: PWM Signal Path
 
 
@@ -38,7 +38,7 @@ It is also important to note that to compensate for the large power consumption 
 
 WS2812 LED Boards
 
-[Imgur](https://i.imgur.com/CnDdV7w.jpg)
+![Imgur](https://i.imgur.com/CnDdV7w.jpg)
 Figure 3: LED Grid
 We created an 8x16 led grid from two 8x8 NeoPixel blinky boards. These LEDs use an NRZ protocol to determine their color and forward information through the chain. This protocol does not rely on a clock signal, as it requires only a single wire for data transmission. Consequently, bits cannot be sent simply as pulses with high representing 1 and off representing 0, as the LEDs have no timing coordination with transmission. Instead, the W2812 NRZ protocol requires each transmitted bit to be encoded as a long (550 - 850ns) or short (200 - 500ns) pulse representing a 1 or a 0 respectively.
 
