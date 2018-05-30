@@ -9,12 +9,14 @@ Video Demo
 [![Video Demo](https://i.imgur.com/SZCrklM.png)](http://www.youtube.com/watch?v=ffcCMSMpSBw "Video Demo")
 
 
-**Overview:**
+**Overview**
+
 Our project focused on the design and implementation of capacitive touch buttons as well as management of large quantities of data (relative to the MSP430G3553’s 512 bytes). We designed a PCB with five capacitive touch buttons which interacted with an 8x16 LED grid via SPI to play interactive arcade games. In addition to the hardware, we developed a capacitive touch library to detect presses from our capacitive touch buttons. We designed this library to be easily calibrated for capacitive touch pads with different sensitivities. 
 
 Our design emphasized all of major concepts of microcontroller programming we covered in this course including: low power modes, timers, PWM, and interaction with hardware modules (SPI communication).
 
-**Design:**
+**Design**
+
 As briefly mentioned in the Overview section, we created a capacitive touch based game through the development of the following distinct components: a PCB with five capacitive touch buttons, an 8x16 WS2812 LED grid, a capacitive touch library, a memory reduced SPI driven WS2812 communication library, and the stacker arcade game logic. The design of each of these discrete aspects of the project is outlined below:
 
 **PCB**
@@ -48,7 +50,9 @@ Ultimately, we capitalized on the timing and transmission capabilities of the MS
 The WS2812 leds required 3 bytes corresponding to 8 bit color in GRB format. To compensate for the small program memory of the MSP430, we designed internal state which encoded the color of each LED in a single byte and functions to expand encoded colors to their corresponding 3 byte GRB representation prior to transmission. 
 
 **Capacitive Touch Library**
+
 To detect capacitive touch, we constructed a library which tracks the transmission time of PWM signals through the pads to five separate receive pins. Touching a capacitive pad increases the pads capacitance and delays the PWM signal transmission. This library utilizes this delay to detect presses by flagging transmission times greater than a specified threshold. We designed this library to be easily calibrated to different pads and sensitivities by abstracting the PWM time parameters and threshold to macros.
 
 **Arcade Games**
+
 To demonstrate the capabilities of our capacitive touch pad, we created two arcade style games accessible from a global start state. At the start pressing either the right or up pad starts the dodge game. In this game, the player uses the pads to move up, down, left, and right on the board to dodge move between blocks which randomly spawn and fall in rows from the top of the screen. This game continues indefinitely until the player collides with a falling block, at which point the lose animation plays and the game returns to the start state. Pressing any other combination of pads starts stacker. In this game, a set number of blocks slides specific to the row back and forth across the screen. Touching any pad stops the row and starts sliding a block above the previous row. Any blocks which don’t align with the previous row are lost, leaving fewer blocks for the next row to be aligned with. Upon reaching the top of the board, the player wins the game and returns to the start, game select state.  All timing for these games was done in 1ms increments, allowing the MSP430 to enter LMP0 during game delays (player/ block movement speed). Additionally, we designed our program such that the capacitive touch sensing was separated from the game logic and thus was not impacted by the 1ms delays.
