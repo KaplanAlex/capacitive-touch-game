@@ -5,7 +5,7 @@ Alexander Kaplan,
 Alfonso Morera,
 Neil Seoni
 
-Video Demo
+**Video Demo**
 [![Video Demo](https://i.imgur.com/SZCrklM.png)](http://www.youtube.com/watch?v=ffcCMSMpSBw "Video Demo")
 
 
