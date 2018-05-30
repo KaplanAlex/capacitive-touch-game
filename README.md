@@ -20,6 +20,7 @@ Our design emphasized all of major concepts of microcontroller programming we co
 As briefly mentioned in the Overview section, we created a capacitive touch based game through the development of the following distinct components: a PCB with five capacitive touch buttons, an 8x16 WS2812 LED grid, a capacitive touch library, a memory reduced SPI driven WS2812 communication library, and the stacker arcade game logic. The design of each of these discrete aspects of the project is outlined below:
 
 **PCB**
+
 As depicted in the image below, our PCB interface consisted of five circular 0.5” pads which served as up, down, left, right, and center capacitive touch buttons, as well as a five LED display (bottom left) representing the buttons’ pressed states. 
 
 ![Imgur](https://i.imgur.com/aH4VqKW.png)
